@@ -12,6 +12,28 @@ export const trackerStyles = StyleSheet.create({
   },
   header: {
     marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dateHeaderContent: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  dateButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateButtonDisabled: {
+    opacity: 0.35,
+  },
+  dateButtonText: {
+    color: '#4F7CFF',
+    fontSize: 28,
+    lineHeight: 30,
   },
   eyebrow: {
     color: '#8A94A6',

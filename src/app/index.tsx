@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Modal,
   Pressable,
   ScrollView,
@@ -27,16 +28,38 @@ function emptyTracker(): TrackerData {
 }
 
 function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
+
+function dateFromKey(key: string) {
+  const [year, month, day] = key.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function shiftDateKey(key: string, days: number) {
+  const date = dateFromKey(key);
+  date.setDate(date.getDate() + days);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+const TRACKER_DAYS_KEY = 'tracker:days';
 
 function formatNumber(value: number) {
   return Math.round(value * 10) / 10;
 }
 
 export default function TrackerScreen() {
+  const [selectedDate, setSelectedDate] = useState(todayKey);
+  const [followCurrentDate, setFollowCurrentDate] = useState(true);
   const [tracker, setTracker] = useState<TrackerData>(() => emptyTracker());
-  const [loaded, setLoaded] = useState(false);
+  const [loadedDate, setLoadedDate] = useState<string | null>(null);
   const [activeMeal, setActiveMeal] = useState<number | null>(null);
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
@@ -47,11 +70,22 @@ export default function TrackerScreen() {
   const [amount, setAmount] = useState('100');
 
   useEffect(() => {
-    AsyncStorage.getItem(`tracker:${todayKey()}`)
+    let active = true;
+
+    AsyncStorage.getItem(`tracker:${selectedDate}`)
       .then((value) => {
-        if (!value) return;
+        if (!active) return;
+
+        if (!value) {
+          setTracker(emptyTracker());
+          return;
+        }
+
         const saved = JSON.parse(value) as Partial<TrackerData>;
-        if (!Array.isArray(saved.entries)) return;
+        if (!Array.isArray(saved.entries)) {
+          setTracker(emptyTracker());
+          return;
+        }
 
         const mealNames =
           Array.isArray(saved.mealNames) && saved.mealNames.length >= 3
@@ -61,7 +95,7 @@ export default function TrackerScreen() {
         for (let index = DEFAULT_MEAL_NAMES.length; index < mealNames.length; index += 1) {
           entries.push(saved.entries?.[index] ?? []);
         }
-        const normalizedTracker = {
+        const normalizedTracker: TrackerData = {
           mealCount: mealNames.length,
           mealNames,
           entries,
@@ -85,21 +119,49 @@ export default function TrackerScreen() {
             ),
           ),
         ).then((refreshedEntries) => {
-          setTracker((current) => ({
-            ...current,
-            entries: refreshedEntries,
-          }));
+          if (active) setTracker((current) => ({ ...current, entries: refreshedEntries }));
         });
       })
-      .catch(() => {})
-      .finally(() => setLoaded(true));
-  }, []);
+      .catch(() => {
+        if (active) setTracker(emptyTracker());
+      })
+      .finally(() => {
+        if (active) setLoadedDate(selectedDate);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedDate]);
 
   useEffect(() => {
-    if (loaded) {
-      AsyncStorage.setItem(`tracker:${todayKey()}`, JSON.stringify(tracker)).catch(() => {});
+    if (loadedDate === selectedDate) {
+      Promise.all([
+        AsyncStorage.setItem(`tracker:${selectedDate}`, JSON.stringify(tracker)),
+        AsyncStorage.getItem(TRACKER_DAYS_KEY).then((value) => {
+          const savedDays = value ? (JSON.parse(value) as string[]) : [];
+          const nextDays = Array.from(new Set([selectedDate, ...savedDays])).sort().reverse();
+          return AsyncStorage.setItem(TRACKER_DAYS_KEY, JSON.stringify(nextDays));
+        }),
+      ]).catch(() => {});
     }
-  }, [tracker, loaded]);
+  }, [tracker, loadedDate, selectedDate]);
+
+  useEffect(() => {
+    const syncCurrentDate = () => {
+      if (followCurrentDate) setSelectedDate(todayKey());
+    };
+
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') syncCurrentDate();
+    });
+    const interval = setInterval(syncCurrentDate, 60_000);
+
+    return () => {
+      subscription.remove();
+      clearInterval(interval);
+    };
+  }, [followCurrentDate]);
 
   const totals = useMemo(() => {
     const result = { calories: 0, proteins: 0, carbs: 0, fats: 0, sugars: 0 };
@@ -240,10 +302,43 @@ export default function TrackerScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>Сегодня</Text>
-          <Text style={styles.title}>
-            {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(new Date())}
-          </Text>
+          <Pressable
+            style={styles.dateButton}
+            onPress={() => {
+              setFollowCurrentDate(false);
+              setSelectedDate((current) => shiftDateKey(current, -1));
+            }}
+            accessibilityLabel="Предыдущий день">
+            <Text style={styles.dateButtonText}>‹</Text>
+          </Pressable>
+          <View style={styles.dateHeaderContent}>
+            <Text style={styles.eyebrow}>
+              {selectedDate === todayKey() ? 'Сегодня' : 'День трекера'}
+            </Text>
+            <Text style={styles.title}>
+              {new Intl.DateTimeFormat('ru-RU', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              }).format(dateFromKey(selectedDate))}
+            </Text>
+          </View>
+          <Pressable
+            style={[
+              styles.dateButton,
+              selectedDate >= todayKey() && styles.dateButtonDisabled,
+            ]}
+            onPress={() => {
+              if (selectedDate < todayKey()) {
+                const nextDate = shiftDateKey(selectedDate, 1);
+                setSelectedDate(nextDate);
+                if (nextDate === todayKey()) setFollowCurrentDate(true);
+              }
+            }}
+            accessibilityLabel="Следующий день"
+            disabled={selectedDate >= todayKey()}>
+            <Text style={styles.dateButtonText}>›</Text>
+          </Pressable>
         </View>
 
         <View style={styles.summaryCard}>
