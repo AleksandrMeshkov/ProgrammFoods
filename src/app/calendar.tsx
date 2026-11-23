@@ -203,7 +203,7 @@ export default function CalendarScreen() {
 
       if (format === 'json') {
         const parsed = JSON.parse(text) as
-          | Array<{ date: string; tracker: TrackerData }>
+          | { date: string; tracker: TrackerData }[]
           | Record<string, TrackerData>;
         const records = Array.isArray(parsed)
           ? parsed
@@ -257,7 +257,6 @@ export default function CalendarScreen() {
               proteins: Number(row.proteins) || 0,
               carbs: Number(row.carbs) || 0,
               fats: Number(row.fats) || 0,
-              sugars: Number(row.sugars) || 0,
             },
           };
           tracker.entries[mealIndex].push(entry);
@@ -283,7 +282,7 @@ export default function CalendarScreen() {
     try {
       const keys = getRangeKeys();
       const values = await AsyncStorage.multiGet(keys.map((key) => `tracker:${key}`));
-      const records: Array<{ date: string; tracker: TrackerData }> = [];
+      const records: { date: string; tracker: TrackerData }[] = [];
 
       values.forEach(([key, value]) => {
         if (!value) return;
@@ -318,7 +317,6 @@ export default function CalendarScreen() {
           'proteins',
           'carbs',
           'fats',
-          'sugars',
         ];
         const rows = [headers.join(',')];
 
@@ -342,7 +340,6 @@ export default function CalendarScreen() {
                 product.proteins,
                 product.carbs,
                 product.fats,
-                product.sugars ?? 0,
               ].map(csvEscape).join(','));
             });
           });

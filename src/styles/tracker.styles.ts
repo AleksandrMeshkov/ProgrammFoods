@@ -67,6 +67,11 @@ export const trackerStyles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 6,
   },
+  profileHint: {
+    color: '#8A94A6',
+    fontSize: 12,
+    marginBottom: 10,
+  },
   macroRow: {
     flexDirection: 'row',
   },

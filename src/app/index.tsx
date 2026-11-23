@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +14,8 @@ import {
   View,
 } from 'react-native';
 
-import { getProductByCode, searchProducts } from '@/services/openFoodFacts';
+import { searchProducts } from '@/services/openFoodFacts';
+import { getDailyCalories, loadProfileMetrics } from '@/services/profile';
 import { trackerStyles as styles } from '@/styles/tracker.styles';
 import type { Product, TrackerData, TrackerEntry, UnitMode } from '@/types/tracker';
 
@@ -68,6 +70,18 @@ export default function TrackerScreen() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [unit, setUnit] = useState<UnitMode>('grams');
   const [amount, setAmount] = useState('100');
+  const [dailyCalories, setDailyCalories] = useState(0);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadProfileMetrics()
+        .then((profile) => {
+          setDailyCalories(profile ? getDailyCalories(profile) : 0);
+        })
+        .finally(() => setProfileLoaded(true));
+    }, []),
+  );
 
   useEffect(() => {
     let active = true;
@@ -102,25 +116,6 @@ export default function TrackerScreen() {
         };
         setTracker(normalizedTracker);
 
-        Promise.all(
-          normalizedTracker.entries.map(async (mealEntries) =>
-            Promise.all(
-              mealEntries.map(async (entry) => {
-                if ((entry.product.sugars ?? 0) !== 0) return entry;
-                try {
-                  const refreshedProduct = await getProductByCode(entry.product.code);
-                  return refreshedProduct
-                    ? { ...entry, product: { ...entry.product, sugars: refreshedProduct.sugars } }
-                    : entry;
-                } catch {
-                  return entry;
-                }
-              }),
-            ),
-          ),
-        ).then((refreshedEntries) => {
-          if (active) setTracker((current) => ({ ...current, entries: refreshedEntries }));
-        });
       })
       .catch(() => {
         if (active) setTracker(emptyTracker());
@@ -164,7 +159,7 @@ export default function TrackerScreen() {
   }, [followCurrentDate]);
 
   const totals = useMemo(() => {
-    const result = { calories: 0, proteins: 0, carbs: 0, fats: 0, sugars: 0 };
+    const result = { calories: 0, proteins: 0, carbs: 0, fats: 0 };
     tracker.entries.flat().forEach((entry) => {
       const grams =
         entry.unit === 'grams'
@@ -175,7 +170,6 @@ export default function TrackerScreen() {
       result.proteins += entry.product.proteins * factor;
       result.carbs += entry.product.carbs * factor;
       result.fats += entry.product.fats * factor;
-      result.sugars += (entry.product.sugars ?? 0) * factor;
     });
     return result;
   }, [tracker.entries]);
@@ -343,9 +337,19 @@ export default function TrackerScreen() {
 
         <View style={styles.summaryCard}>
           <View style={styles.calorieSummary}>
-            <Text style={styles.calorieValue}>{formatNumber(totals.calories)}</Text>
-            <Text style={styles.calorieLabel}>ккал</Text>
+            <Text style={styles.calorieValue}>
+              {formatNumber(totals.calories)}
+              {dailyCalories > 0 ? ` / ${dailyCalories}` : ''}
+            </Text>
+            <Text style={styles.calorieLabel}>
+              {dailyCalories > 0 ? 'ккал набрано / норма' : 'ккал'}
+            </Text>
           </View>
+          {profileLoaded && dailyCalories === 0 && (
+            <Text style={styles.profileHint}>
+              Укажите рост и вес в профиле для расчёта нормы
+            </Text>
+          )}
           <View style={styles.macroRow}>
             <View style={styles.macroItem}>
               <Text style={styles.macroValue}>{formatNumber(totals.proteins)} г</Text>
@@ -358,10 +362,6 @@ export default function TrackerScreen() {
             <View style={styles.macroItem}>
               <Text style={styles.macroValue}>{formatNumber(totals.carbs)} г</Text>
               <Text style={styles.macroLabel}>Углеводы</Text>
-            </View>
-            <View style={styles.macroItem}>
-              <Text style={styles.macroValue}>{formatNumber(totals.sugars)} г</Text>
-              <Text style={styles.macroLabel}>Сахар</Text>
             </View>
           </View>
         </View>

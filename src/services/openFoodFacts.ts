@@ -49,15 +49,6 @@ function parseProduct(hit: Record<string, unknown>): Product | null {
     hit.serving_quantity,
     hit.serving_quantity_100g,
   );
-  const sugarsPerServing = firstNumber(
-    nutriments.sugars_serving,
-    nutriments['sugars-serving'],
-  );
-  const sugarsPer100g =
-    sugarsPerServing > 0 && servingGrams > 0
-      ? (sugarsPerServing * 100) / servingGrams
-      : undefined;
-
   return {
     code,
     name,
@@ -70,14 +61,6 @@ function parseProduct(hit: Record<string, unknown>): Product | null {
     proteins: asNumber(nutriments.proteins_100g),
     carbs: asNumber(nutriments.carbohydrates_100g),
     fats: asNumber(nutriments.fat_100g),
-    sugars: firstNumber(
-      nutriments.sugars_100g,
-      nutriments['sugars_100g'],
-      nutriments.sugars_value,
-      nutriments.sugars,
-      hit.sugars_100g,
-      sugarsPer100g,
-    ),
   };
 }
 

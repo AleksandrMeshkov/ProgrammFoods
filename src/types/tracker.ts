@@ -10,7 +10,6 @@ export type Product = {
   proteins: number;
   carbs: number;
   fats: number;
-  sugars: number;
 };
 
 export type TrackerEntry = {
